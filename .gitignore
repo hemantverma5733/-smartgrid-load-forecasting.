@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Integration & testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases & configurations
+smartgrid.db
+.env
+.DS_Store
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.db
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
