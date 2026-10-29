@@ -18,9 +18,9 @@ celery_app.conf.update(
 
 # Celery Beat Periodic Tasks Configuration
 celery_app.conf.beat_schedule = {
-    "monitor-grid-every-30-seconds": {
+    "monitor-grid-every-2-minutes": {
         "task": "app.tasks.tasks.monitor_grid_overloads",
-        "schedule": 30.0,
+        "schedule": 120.0,
     },
     "generate-daily-report-every-day": {
         "task": "app.tasks.tasks.generate_grid_reports",

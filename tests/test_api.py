@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def test_health_check(client):
     response = client.get("/health")
@@ -123,3 +123,79 @@ def test_grid_operations_flow(client):
     assert "load_metrics_24h" in analytics
     assert "consumption_kwh" in analytics
     assert analytics["load_metrics_24h"]["peak_load_kw"] >= 185.0
+
+def test_forecasting_flow(client):
+    headers = get_auth_headers(client)
+    
+    # 1. Create Zone and Meter
+    zone_data = {
+        "name": "Forecasting Zone",
+        "description": "Zone for forecasting integration test",
+        "capacity_limit_kw": 300.0
+    }
+    res = client.post("/api/v1/zones/", json=zone_data, headers=headers)
+    assert res.status_code == 201
+    zone_id = res.json()["id"]
+    
+    meter_data = {
+        "serial_number": "MTR-FCST-01",
+        "zone_id": zone_id,
+        "status": "active",
+        "capacity_limit_kw": 150.0
+    }
+    res = client.post("/api/v1/meters/", json=meter_data, headers=headers)
+    assert res.status_code == 201
+    meter_id = res.json()["id"]
+    
+    # 2. Ingest 30 hours of historical readings to satisfy history requirements (>= 25 readings)
+    base_time = datetime(2026, 6, 1, 0, 0, 0)
+    for i in range(30):
+        reading_time = base_time + timedelta(hours=i)
+        reading_data = {
+            "meter_id": meter_id,
+            "zone_id": zone_id,
+            "voltage": 220.0,
+            "current": 5.0,
+            "power_consumption": 1.1 + (i % 5) * 0.1,  # minor variance
+            "frequency": 50.0,
+            "temperature": 25.0,
+            "timestamp": reading_time.isoformat()
+        }
+        res = client.post("/api/v1/meters/readings", json=reading_data)
+        assert res.status_code == 201
+
+    # 3. Test Meter-level forecasting
+    predict_req = {
+        "zone_id": zone_id,
+        "meter_id": meter_id,
+        "horizon_hours": 6
+    }
+    response = client.post("/api/v1/predict/", json=predict_req, headers=headers)
+    assert response.status_code == 200
+    pred_data = response.json()
+    assert pred_data["zone_id"] == zone_id
+    assert pred_data["meter_id"] == meter_id
+    assert len(pred_data["predictions"]) == 6
+    
+    # 4. Test Zone-level forecasting
+    predict_req_zone = {
+        "zone_id": zone_id,
+        "meter_id": None,
+        "horizon_hours": 12
+    }
+    response = client.post("/api/v1/predict/", json=predict_req_zone, headers=headers)
+    assert response.status_code == 200
+    pred_data_zone = response.json()
+    assert pred_data_zone["zone_id"] == zone_id
+    assert pred_data_zone["meter_id"] is None
+    assert len(pred_data_zone["predictions"]) == 12
+
+    # 5. Test mismatched meter and zone
+    predict_req_mismatch = {
+        "zone_id": zone_id,
+        "meter_id": 9999,  # non-existent meter
+        "horizon_hours": 6
+    }
+    response = client.post("/api/v1/predict/", json=predict_req_mismatch, headers=headers)
+    assert response.status_code == 404
+

@@ -9,6 +9,7 @@ from app.api import deps
 from app.ml.predictor import Predictor
 from app.models.reading import MeterReading
 from app.models.meter import Meter
+from app.models.zone import Zone
 from app.models.prediction import Prediction
 from app.schemas.prediction import PredictRequest, PredictResponse, PredictionResultItem
 
@@ -31,9 +32,37 @@ def get_load_forecast(
     Generate load forecasting for the next N hours (1h, 6h, 24h) for a specific meter or zone.
     Saves predictions in the database for tracking.
     """
-    # Fetch historical readings to build lag/rolling features
-    # We need at least 30 hours of historical readings
-    limit_readings = 100
+    # Validate zone exists
+    zone = db.query(Zone).filter(Zone.id == req.zone_id).first()
+    if not zone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Zone with ID {req.zone_id} does not exist."
+        )
+
+    # Validate meter exists and belongs to the zone if meter_id is provided
+    if req.meter_id is not None:
+        meter = db.query(Meter).filter(Meter.id == req.meter_id).first()
+        if not meter:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Smart meter with ID {req.meter_id} does not exist."
+            )
+        if meter.zone_id != req.zone_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Smart meter with ID {req.meter_id} does not belong to Zone {req.zone_id}."
+            )
+
+    # Dynamically scale history lookup limits based on the number of active meters in the zone
+    meter_count = db.query(Meter).filter(Meter.zone_id == req.zone_id, Meter.status == "active").count()
+    if meter_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No active smart meters found in Zone {req.zone_id}."
+        )
+
+    limit_readings = max(300, meter_count * 100)
     
     query = db.query(MeterReading).filter(MeterReading.zone_id == req.zone_id)
     if req.meter_id is not None:
@@ -46,6 +75,7 @@ def get_load_forecast(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Insufficient history data. Found {len(readings)} readings, but need at least 25 to run forecasting."
         )
+
 
     # Convert database models to pandas dataframe
     rows = []
@@ -77,6 +107,13 @@ def get_load_forecast(
             "zone_id": "first"
         }).reset_index()
         df["meter_id"] = 0  # dummy meter id for zone level
+
+    # Ensure we have enough aggregated historical intervals (hourly intervals)
+    if len(df) < 25:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Insufficient hourly interval history after aggregation. Found {len(df)} intervals, but need at least 25."
+        )
         
     # Generate predictions
     forecast_results = []

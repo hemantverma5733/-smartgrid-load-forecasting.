@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 
@@ -17,8 +17,8 @@ class PredictionCreate(PredictionBase):
 class PredictionResponse(PredictionBase):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class PredictRequest(BaseModel):
     zone_id: int

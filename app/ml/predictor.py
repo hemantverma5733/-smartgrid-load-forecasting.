@@ -88,10 +88,8 @@ class Predictor:
             # Predict
             if self.best_model_name in ["LSTM", "Transformer"]:
                 # Deep learning requires sequences.
-                # Get the last `look_back` rows of scaled features
-                # We need all inputs to be scaled first
                 df_all_feat = self.processor.create_features(df)
-                all_X_scaled, _ = self.processor.transform(all_all_feat := df_all_feat)
+                all_X_scaled, _ = self.processor.transform(df_all_feat)
                 
                 # Check if we have enough sequences
                 if len(all_X_scaled) < self.look_back:

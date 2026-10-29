@@ -47,8 +47,41 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App Configuration
-API_BASE_URL = "http://localhost:8000/api/v1"
-DB_PATH = "smartgrid.db"
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api/v1")
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    try:
+        from app.config import settings
+        DATABASE_URL = settings.DATABASE_URL
+    except Exception:
+        DATABASE_URL = "sqlite:///./smartgrid.db"
+
+# Create SQLAlchemy engine for SQL queries
+from sqlalchemy import create_engine
+try:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True if not DATABASE_URL.startswith("sqlite") else False
+    )
+    # Test connection to verify if the server is active
+    with engine.connect() as conn:
+        pass
+except Exception as e:
+    engine = create_engine("sqlite:///./smartgrid.db")
+
+# Auto-initialize database tables and seed if empty
+try:
+    from app.db.base import Base
+    from app.db.session import SessionLocal
+    from app.models.zone import Zone
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db_session_check:
+        if not db_session_check.query(Zone).first():
+            from scripts.generate_sample_data import generate_data
+            generate_data()
+except Exception:
+    pass
 
 # Session state initialization
 if "token" not in st.session_state:
@@ -85,15 +118,14 @@ with st.sidebar.expander("🔐 API Authentication", expanded=False):
 st.sidebar.info(f"Mode: **{st.session_state.auth_status}**")
 
 # Data loading helpers
-def load_db_data(query, params=()):
-    if os.path.exists(DB_PATH):
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            df = pd.read_sql_query(query, conn, params=params)
-            conn.close()
+from sqlalchemy import text
+def load_db_data(query, params=None):
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql_query(text(query), conn, params=params)
             return df
-        except Exception as e:
-            st.error(f"DB Error: {e}")
+    except Exception as e:
+        st.error(f"DB Error: {e}")
     return pd.DataFrame()
 
 # Main page layout
@@ -105,8 +137,21 @@ if st.session_state.token:
     # Query API
     headers = {"Authorization": f"Bearer {st.session_state.token}"}
     try:
-        analytics = requests.get(f"{API_BASE_URL}/analytics/", headers=headers).json()
-        alerts = requests.get(f"{API_BASE_URL}/alerts/", headers=headers).json()
+        res_analytics = requests.get(f"{API_BASE_URL}/analytics/", headers=headers, timeout=3)
+        res_alerts = requests.get(f"{API_BASE_URL}/alerts/", headers=headers, timeout=3)
+        
+        if res_analytics.status_code == 200 and res_alerts.status_code == 200:
+            analytics = res_analytics.json()
+            alerts = res_alerts.json()
+            if not isinstance(analytics, dict) or "load_metrics_24h" not in analytics:
+                analytics = None
+                alerts = None
+        else:
+            if res_analytics.status_code == 401 or res_alerts.status_code == 401:
+                st.session_state.token = None
+                st.session_state.auth_status = "Disconnected"
+            analytics = None
+            alerts = None
     except Exception:
         analytics = None
         alerts = None
@@ -247,11 +292,11 @@ with p_col1:
                     predictor = Predictor()
                     
                     # Fetch last 30 readings
-                    query = "SELECT * FROM meterreading WHERE zone_id = ?"
-                    params = [selected_zone_id]
+                    query = "SELECT * FROM meterreading WHERE zone_id = :zone_id"
+                    params = {"zone_id": selected_zone_id}
                     if selected_meter_id is not None:
-                        query += " AND meter_id = ?"
-                        params.append(selected_meter_id)
+                        query += " AND meter_id = :meter_id"
+                        params["meter_id"] = selected_meter_id
                         
                     query += " ORDER BY timestamp DESC LIMIT 50"
                     

@@ -86,7 +86,7 @@ def ingest_reading(
     
     # Overload detection triggering in backend
     # If the reading exceeds 90% of the meter capacity, we can log it here.
-    # Note: Celery also runs a periodic task every 30s to check overload,
+    # Note: Celery also runs a periodic task every 2 minutes to check overload,
     # but immediate checks can trigger instantly here.
     if db_reading.power_consumption >= (meter.capacity_limit_kw * 0.9):
         # We can trigger alerts immediately or delegate to celery.

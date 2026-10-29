@@ -19,8 +19,25 @@ from app.api.v1 import auth, zones, meters, predict, alerts, analytics
 try:
     Base.metadata.create_all(bind=engine)
     print("Database tables initialized successfully.")
+    
+    # Auto-seed database if empty (no zones found)
+    from app.db.session import SessionLocal
+    from app.models.zone import Zone
+    db_session_init = SessionLocal()
+    try:
+        if not db_session_init.query(Zone).first():
+            print("Database is empty. Running auto-seeding...")
+            from scripts.generate_sample_data import generate_data
+            generate_data()
+        else:
+            print("Database already contains zones. Skipping auto-seeding.")
+    except Exception as seed_err:
+        print(f"Warning: Auto-seeding skipped or failed: {seed_err}")
+    finally:
+        db_session_init.close()
 except Exception as e:
     print(f"Warning: Database auto-initialization skipped or failed: {e}")
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

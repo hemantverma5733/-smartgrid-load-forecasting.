@@ -14,7 +14,7 @@ graph TD
     FastAPI -->|Write Telemetry| DB[(PostgreSQL Database)]
     FastAPI -->|Cache Latest Readings| Redis[(Redis Cache / Broker)]
     
-    Celery[Celery Workers] -->|Check Overload 30s| DB
+    Celery[Celery Workers] -->|Check Overload 2m| DB
     Celery -->|Read Latest Readings| Redis
     CeleryBeat[Celery Beat Scheduler] -->|Trigger Periodic Tasks| Celery
     

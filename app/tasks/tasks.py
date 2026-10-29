@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 @celery_app.task
 def monitor_grid_overloads():
     """
-    Periodic task running every 30 seconds to audit latest smart meter telemetry
+    Periodic task running every 2 minutes to audit latest smart meter telemetry
     and issue alerts if current load exceeds 90% of capacity.
     """
     logger.info("Auditing smart grid for overload conditions...")
