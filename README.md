@@ -4,6 +4,7 @@
 
 This system ingests real-time smart meter telemetry (voltage, current, power consumption, frequency, temperature) and uses advanced time-series forecasting models to predict load conditions 1h, 6h, and 24h into the future, triggers automatic safety alerts if loads exceed capacity limits, and serves real-time analytics.
 
+https://wvueap42vey42vomcsbgep.streamlit.app/
 ---
 
 ## 🏗️ System Architecture
